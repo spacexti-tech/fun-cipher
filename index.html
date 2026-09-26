@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -210,7 +210,7 @@
 <body>
   <div class="card">
     <h1>🔐 趣味字符加密器</h1>
-    <p class="subtitle">把文字变成一堆奇奇怪怪的符号，还能变回来 ✨</p>
+    <p class="subtitle">把文字变成日语 + 意大利语 + 甲骨文的混合密文，还能还原 ✨</p>
 
     <div class="counter">
       <span>免费使用：<strong id="used">0</strong> / 520 次</span>
@@ -250,36 +250,12 @@
   </div>
 
 <script>
-  // ============ 字符池：从多个趣味 Unicode 区段混合采样 256 个字符 ============
-  const POOL_RANGES = [
-    [0x1F600, 0x1F64F], // Emoticons 😀-🙏
-    [0x1F300, 0x1F5FF], // Misc Symbols & Pictographs 🌀-🖇
-    [0x2600, 0x26FF],   // Misc Symbols ☀-⛿
-    [0x2700, 0x27BF],   // Dingbats ✀-➿
-    [0x2B00, 0x2BFF],   // Misc Symbols & Arrows ⬀-⟥
-    [0x25A0, 0x25FF],   // Geometric Shapes ■-◿
-    [0x2190, 0x21FF],   // Arrows ←-⇿
-  ];
-
-  function buildPool() {
-    const pool = [];
-    const cursors = POOL_RANGES.map(([s]) => s);
-    while (pool.length < 256) {
-      let advanced = false;
-      for (let i = 0; i < POOL_RANGES.length; i++) {
-        const [s, e] = POOL_RANGES[i];
-        if (cursors[i] <= e) {
-          pool.push(String.fromCodePoint(cursors[i]++));
-          advanced = true;
-          if (pool.length >= 256) break;
-        }
-      }
-      if (!advanced) break;
-    }
-    return pool;
-  }
-
-  const POOL = buildPool();
+  // ============ 字符池：日语(平假名+片假名) + 意大利语(拉丁字母及重音) + 甲骨文风古汉字 ============
+  const POOL = Array.from(
+    "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン" +
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÄÇÈÉÊËÌÍÎÏÑàáâãäçèéêëìíîïñ" +
+    "人天夫夨夭央女母好姐妹妻妾子孙孝孚宀宅宇守安宋宏宗官宙定宛宜宝实宠审宪宫宰害宴宵家宸容宽寮宁寨寻专射将尔尹尺尼尾居屋屈展屠履山岔岛岳岸岩峰峻岭峪峡峨峭崎崖崛嵘嵯巅巛"
+  );
   const INDEX = new Map(POOL.map((c, i) => [c, i]));
   const KEY = 0x5A; // XOR key — 让"加密"更名副其实
 
