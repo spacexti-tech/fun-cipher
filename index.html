@@ -243,7 +243,7 @@
     border-radius: 14px;
     text-align: center;
   }
-  .media-output video, .media-output audio {
+  .media-output video, .media-output audio, .media-output img {
     width: 100%;
     border-radius: 10px;
     margin-bottom: 8px;
@@ -342,16 +342,20 @@
       <label>🎛 加密方式：</label>
       <select id="method">
         <option value="emoji">😀 Emoji 表情</option>
+        <option value="sticker">🎴 表情包</option>
+        <option value="numbers">🔢 数字</option>
         <option value="oracle">🏺 甲骨文</option>
         <option value="french">🇫🇷 法语</option>
+        <option value="russian">🇷🇺 俄语</option>
+        <option value="arabic">🇸🇦 阿拉伯语</option>
         <option value="japanese">🈶 日语</option>
-        <option value="video">🎬 视频</option>
+        <option value="image">🖼 图片</option>
         <option value="music">🎵 音乐</option>
       </select>
     </div>
 
     <div id="dropZone" class="drop-zone">
-      <textarea id="input" placeholder="在这里输入文字，或拖入视频/音频文件进行解密..."></textarea>
+      <textarea id="input" placeholder="在这里输入文字，或拖入图片/音频文件进行解密..."></textarea>
       <div class="drop-hint" id="dropHint">📂 拖入文件到此处</div>
     </div>
 
@@ -377,7 +381,7 @@
       <div class="hint" id="mediaHint"></div>
     </div>
 
-    <input type="file" id="fileInput" style="display:none" accept="video/*,audio/*">
+    <input type="file" id="fileInput" style="display:none" accept="image/*,audio/*">
 
     <div class="footer">
       <span>本地加密 · 无需联网 · 💛</span>
@@ -423,20 +427,37 @@
       [0x1F600, 0x1F64F], [0x1F300, 0x1F5FF], [0x1F900, 0x1F9FF],
       [0x1FA70, 0x1FAFF], [0x2600, 0x26FF], [0x2700, 0x27BF],
     ]),
+    sticker: Array.from({ length: 256 }, (_, i) => String.fromCodePoint(0x1F400 + i)),
     oracle: Array.from({ length: 256 }, (_, i) => String.fromCodePoint(0x4E00 + i)),
     french: Array.from({ length: 256 }, (_, i) => String.fromCharCode(0x00C0 + i)),
     japanese: buildPool([
       [0x3041, 0x3096], [0x30A1, 0x30FA], [0xFF61, 0xFF9F], [0x3001, 0x303F],
     ]),
+    russian: Array.from({ length: 256 }, (_, i) => String.fromCharCode(0x0400 + i)),
+    arabic: Array.from({ length: 256 }, (_, i) => String.fromCharCode(0x0600 + i)),
   };
-  const TEXT_METHODS = ['emoji', 'oracle', 'french', 'japanese'];
+  const TEXT_METHODS = ['emoji', 'sticker', 'oracle', 'french', 'japanese', 'russian', 'arabic', 'numbers'];
 
   function encryptText(text, method) {
-    const pool = POOLS[method];
     const bytes = new TextEncoder().encode(text);
+    if (method === 'numbers') {
+      return Array.from(bytes).map(b => String(b ^ KEY).padStart(3, '0')).join('');
+    }
+    const pool = POOLS[method];
     return Array.from(bytes).map(b => pool[b ^ KEY]).join('');
   }
   function decryptText(text, method) {
+    if (method === 'numbers') {
+      const clean = text.replace(/\s+/g, '');
+      if (clean.length % 3 !== 0) throw new Error('数字密文长度应为 3 的倍数');
+      const bytes = [];
+      for (let i = 0; i < clean.length; i += 3) {
+        const n = parseInt(clean.slice(i, i + 3), 10);
+        if (isNaN(n) || n < 0 || n > 255) throw new Error('无效数字块：' + clean.slice(i, i + 3));
+        bytes.push(n ^ KEY);
+      }
+      return new TextDecoder().decode(new Uint8Array(bytes));
+    }
     const pool = POOLS[method];
     const index = new Map(pool.map((c, i) => [c, i]));
     const chars = Array.from(text).filter(c => /\S/.test(c));
@@ -449,8 +470,8 @@
     return new TextDecoder().decode(new Uint8Array(bytes));
   }
 
-  // ===== 视频加密：字节 → 调色板颜色 → 网格帧 → webm =====
-  const V = { W: 320, H: 320, CELL: 20, COLS: 16, ROWS: 16 };
+  // ===== 图片加密：字节 → 调色板颜色 → 网格 → PNG =====
+  const IMG = { CELL: 20 };
   function byteToRGB(b) {
     return [(b & 7) * 32, ((b >> 3) & 7) * 32, ((b >> 6) & 3) * 64];
   }
@@ -461,86 +482,57 @@
     return (rb / 32) | ((gb / 32) << 3) | ((bb / 64) << 6);
   }
 
-  async function encryptVideo(text) {
+  function encryptImage(text) {
     const bytes = new TextEncoder().encode(text);
     const total = bytes.length;
+    // 前 2 格存总长度（高、低字节），之后为数据
+    const cells = 2 + total;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(cells)));
+    const rows = Math.ceil(cells / cols);
     const canvas = document.createElement('canvas');
-    canvas.width = V.W; canvas.height = V.H;
+    canvas.width = cols * IMG.CELL;
+    canvas.height = rows * IMG.CELL;
     const ctx = canvas.getContext('2d');
-    const PER_FRAME = V.COLS * V.ROWS - 3;
-    const frames = Math.max(1, Math.ceil(total / PER_FRAME));
-    const stream = canvas.captureStream(10);
-    const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
-    const chunks = [];
-    rec.ondataavailable = e => chunks.push(e.data);
-    rec.start();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    let pos = 0;
-    for (let f = 0; f < frames; f++) {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, V.W, V.H);
-      // header: sync=0, total high, total low
-      drawCell(ctx, 0, 0, 0);
-      drawCell(ctx, 1, 0, (total >> 8) & 0xFF);
-      drawCell(ctx, 2, 0, total & 0xFF);
-      let idx = 3;
-      while (idx < V.COLS * V.ROWS) {
-        const c = idx % V.COLS, r = Math.floor(idx / V.COLS);
-        drawCell(ctx, c, r, pos < total ? bytes[pos++] : 0);
-        idx++;
-      }
-      await new Promise(r => setTimeout(r, 110));
+    const all = [(total >> 8) & 0xFF, total & 0xFF, ...bytes];
+    for (let i = 0; i < all.length; i++) {
+      const c = i % cols, r = Math.floor(i / cols);
+      const [R, G, B] = byteToRGB(all[i]);
+      ctx.fillStyle = `rgb(${R},${G},${B})`;
+      ctx.fillRect(c * IMG.CELL, r * IMG.CELL, IMG.CELL, IMG.CELL);
     }
-    rec.stop();
-    await new Promise(res => rec.onstop = res);
-    return new Blob(chunks, { type: 'video/webm' });
-  }
-  function drawCell(ctx, col, row, byte) {
-    const [r, g, b] = byteToRGB(byte);
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.fillRect(col * V.CELL, row * V.CELL, V.CELL, V.CELL);
+    return new Promise(res => canvas.toBlob(blob => res(blob), 'image/png'));
   }
 
-  async function decryptVideo(file) {
+  async function decryptImage(file) {
     const url = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.src = url;
-    video.muted = true;
-    await new Promise((res, rej) => { video.onloadeddata = res; video.onerror = rej; });
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
     const canvas = document.createElement('canvas');
-    canvas.width = V.W; canvas.height = V.H;
+    canvas.width = img.width; canvas.height = img.height;
     const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const cols = Math.floor(img.width / IMG.CELL);
+    const rows = Math.floor(img.height / IMG.CELL);
+    const half = IMG.CELL >> 1;
+    const getByte = (c, r) => {
+      const x = c * IMG.CELL + half, y = r * IMG.CELL + half;
+      const p = (y * canvas.width + x) * 4;
+      return rgbToByte(d[p], d[p + 1], d[p + 2]);
+    };
+    const total = (getByte(0, 0) << 8) | getByte(1, 0);
     const allBytes = [];
-    let total = -1;
-
-    await new Promise(resolve => {
-      const step = () => {
-        ctx.drawImage(video, 0, 0, V.W, V.H);
-        const d = ctx.getImageData(0, 0, V.W, V.H).data;
-        const gb = (c, r) => {
-          const x = c * V.CELL + (V.CELL >> 1), y = r * V.CELL + (V.CELL >> 1);
-          const p = (y * V.W + x) * 4;
-          return rgbToByte(d[p], d[p + 1], d[p + 2]);
-        };
-        if (gb(0, 0) === 0) {
-          const t = (gb(1, 0) << 8) | gb(2, 0);
-          if (total === -1) total = t;
-          for (let i = 3; i < V.COLS * V.ROWS && allBytes.length < total; i++) {
-            allBytes.push(gb(i % V.COLS, Math.floor(i / V.COLS)));
-          }
-        }
-        if (allBytes.length >= total || video.ended) { resolve(); return; }
-        video.currentTime = Math.min(video.duration, video.currentTime + 0.1);
-        video.onseeked = step;
-      };
-      video.currentTime = 0;
-      video.onseeked = step;
-    });
+    for (let i = 2; i < cols * rows && allBytes.length < total; i++) {
+      allBytes.push(getByte(i % cols, Math.floor(i / cols)));
+    }
     URL.revokeObjectURL(url);
-    return new TextDecoder().decode(new Uint8Array(allBytes.slice(0, total > 0 ? total : 0)));
+    return new TextDecoder().decode(new Uint8Array(allBytes.slice(0, total)));
   }
 
-  // ===== 音乐加密：字节 → 两个半音音符 → webm 音频 =====
+  // ===== 音乐加密：字节 → 两个半音音符 → WAV 音频 =====
   const NOTES = [261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00,
     415.30, 440.00, 466.16, 493.88, 523.25, 554.37, 587.33, 622.25];
   const TONE = 0.12, GAP = 0.08, STEP = TONE + GAP;
@@ -702,7 +694,7 @@
   }
 
   function currentMethod() { return $method.value; }
-  function isMedia(m) { return m === 'video' || m === 'music'; }
+  function isMedia(m) { return m === 'image' || m === 'music'; }
 
   async function doEncrypt() {
     if (!isActivated()) { showModal(); return; }
@@ -714,13 +706,13 @@
         showText();
         $output.textContent = encryptText(text, m);
         $output.style.color = '#e8d9f0';
-      } else if (m === 'video') {
-        flash('🎬 正在生成视频...');
+      } else if (m === 'image') {
+        flash('🖼 正在生成图片...');
         showText();
-        const blob = await encryptVideo(text);
+        const blob = await encryptImage(text);
         const url = URL.createObjectURL(blob);
-        showMedia(`<video src="${url}" controls></video>`, url, 'cipher.webm',
-          `视频加密完成（${(blob.size / 1024).toFixed(1)} KB），解密时选择此文件`);
+        showMedia(`<img src="${url}" alt="cipher">`, url, 'cipher.png',
+          `图片加密完成（${(blob.size / 1024).toFixed(1)} KB），解密时选择此文件`);
       } else if (m === 'music') {
         flash('🎵 正在生成音乐...');
         showText();
@@ -738,8 +730,8 @@
     const m = currentMethod();
     try {
       showText();
-      flash('⏳ 正在解密' + (m === 'video' ? '视频' : '音乐') + '...');
-      const result = m === 'video' ? await decryptVideo(file) : await decryptMusic(file);
+      flash('⏳ 正在解密' + (m === 'image' ? '图片' : '音乐') + '...');
+      const result = m === 'image' ? await decryptImage(file) : await decryptMusic(file);
       $output.textContent = '✅ 解密结果：\n' + result;
       $output.style.color = '#e8d9f0';
     } catch (e) {
@@ -759,7 +751,7 @@
         $output.style.color = '#e8d9f0';
       } else {
         $fileInput.value = '';
-        $fileInput.accept = m === 'video' ? 'video/*' : 'audio/*';
+        $fileInput.accept = m === 'image' ? 'image/*' : 'audio/*';
         $fileInput.click();
         return;
       }
