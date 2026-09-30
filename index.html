@@ -278,15 +278,63 @@
     margin-top: 8px;
     box-shadow: 0 4px 12px rgba(239,68,68,0.3);
   }
+
+  /* ===== 拖放区 ===== */
+  .drop-zone {
+    position: relative;
+    border: 2px dashed rgba(6,182,212,0.35);
+    border-radius: 14px;
+    padding: 4px;
+    transition: all .2s;
+  }
+  .drop-zone.dragover {
+    border-color: #06b6d4;
+    background: rgba(6,182,212,0.08);
+    box-shadow: 0 0 0 3px rgba(6,182,212,0.15);
+  }
+  .drop-zone textarea {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+  .drop-hint {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #06b6d4;
+    font-size: 14px;
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .drop-zone.dragover .drop-hint { opacity: 1; }
+
+  /* ===== 激活弹窗 ===== */
+  .act-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid rgba(168,155,184,0.3);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.6);
+    font-size: 15px;
+    color: #1e1b4b;
+    text-align: center;
+    letter-spacing: 2px;
+    box-sizing: border-box;
+    outline: none;
+  }
+  .act-input:focus { border-color: #06b6d4; box-shadow: 0 0 0 3px rgba(6,182,212,0.2); }
+  .act-error { color: #ef4444; font-size: 13px; min-height: 18px; margin-top: 6px; }
+  .modal-card button { margin-top: 4px; }
 </style>
 </head>
 <body>
   <div class="card">
     <h1>🔐 趣味字符加密器</h1>
-    <p class="subtitle">多种加密方式自由选择：Emoji · 甲骨文 · 法语 · 日语 · 视频 · 音乐 ✨</p>
 
     <div class="counter">
-      <span>免费使用：<strong id="used">0</strong> / 520 次</span>
+      <span id="actStatus">🔓 未激活</span>
       <div class="progress"><div id="bar"></div></div>
     </div>
 
@@ -302,7 +350,10 @@
       </select>
     </div>
 
-    <textarea id="input" placeholder="在这里输入文字... 例如：你好世界 Hello 123"></textarea>
+    <div id="dropZone" class="drop-zone">
+      <textarea id="input" placeholder="在这里输入文字，或拖入视频/音频文件进行解密..."></textarea>
+      <div class="drop-hint" id="dropHint">📂 拖入文件到此处</div>
+    </div>
 
     <div class="buttons">
       <button class="btn-enc" id="btnEnc">🔒 加密</button>
@@ -331,16 +382,17 @@
     <div class="footer">
       <span>本地加密 · 无需联网 · 💛</span>
       <br>
-      <a id="resetLink" title="仅供开发者演示">杜嘉芯可重置次数</a>
+      <a id="resetLink" title="重新激活">点击重新输入激活码</a>
     </div>
   </div>
 
   <div class="modal hidden" id="modal">
     <div class="modal-card">
-      <h2>🎉 已达 520 次免费额度</h2>
-      <p>感谢使用！继续畅玩请扫码付费解锁，永久不限次 ✨</p>
-      <div class="qr-placeholder">请在此处替换为<br>您的收款二维码</div>
-      <button id="btnClose">我知道了</button>
+      <h2>🔑 软件激活</h2>
+      <p>请输入激活码以解锁全部加密功能</p>
+      <input type="text" id="actCode" class="act-input" placeholder="请输入激活码" autocomplete="off">
+      <div class="act-error" id="actError"></div>
+      <button id="btnAct">激活</button>
     </div>
   </div>
 
@@ -591,23 +643,37 @@
     return new TextDecoder().decode(new Uint8Array(bytes));
   }
 
-  // ===== 使用次数管理 =====
-  const LIMIT = 520;
-  const KEY_USE = 'funCipher.uses';
-  const KEY_PAID = 'funCipher.paid';
-  const getUses = () => parseInt(localStorage.getItem(KEY_USE) || '0', 10);
-  const setUses = n => localStorage.setItem(KEY_USE, String(n));
-  const isPaid = () => localStorage.getItem(KEY_PAID) === '1';
-  const bumpUse = () => { const n = getUses() + 1; setUses(n); return n; };
-  const canUse = () => isPaid() || getUses() < LIMIT;
-
-  function refreshCounter() {
-    const used = getUses();
-    document.getElementById('used').textContent = used;
-    document.getElementById('bar').style.width = Math.min(100, used / LIMIT * 100) + '%';
+  // ===== 激活码管理 =====
+  const KEY_ACT = 'funCipher.activated';
+  // 有效激活码（简单异或混淆存储）
+  const VALID_CODES = ['FUN-2024-OPEN', 'CIPHER-X-2024', 'DJX-520-LOVE']
+    .map(s => [...s].map(c => c.charCodeAt(0) ^ 0x5A).join(','));
+  const isActivated = () => localStorage.getItem(KEY_ACT) === '1';
+  function setActivated() { localStorage.setItem(KEY_ACT, '1'); }
+  function verifyCode(code) {
+    const norm = code.trim().toUpperCase();
+    if (!norm) return false;
+    const enc = [...norm].map(c => c.charCodeAt(0) ^ 0x5A).join(',');
+    return VALID_CODES.includes(enc);
   }
-  function showPaywall() { document.getElementById('modal').classList.remove('hidden'); }
-  function hidePaywall() { document.getElementById('modal').classList.add('hidden'); }
+
+  function refreshStatus() {
+    const el = document.getElementById('actStatus');
+    const bar = document.getElementById('bar');
+    if (isActivated()) {
+      el.textContent = '🔓 已激活';
+      el.style.color = '#10b981';
+      bar.style.width = '100%';
+      bar.style.background = 'linear-gradient(90deg, #06b6d4, #10b981)';
+    } else {
+      el.textContent = '🔒 未激活';
+      el.style.color = '#ef4444';
+      bar.style.width = '100%';
+      bar.style.background = '#ef4444';
+    }
+  }
+  function showModal() { document.getElementById('modal').classList.remove('hidden'); }
+  function hideModal() { document.getElementById('modal').classList.add('hidden'); }
 
   // ===== UI =====
   const $input = document.getElementById('input');
@@ -619,6 +685,7 @@
   const $dlLink = document.getElementById('dlLink');
   const $mediaHint = document.getElementById('mediaHint');
   const $fileInput = document.getElementById('fileInput');
+  const $dropZone = document.getElementById('dropZone');
 
   function flash(msg, isError = false) {
     $output.textContent = msg;
@@ -638,7 +705,7 @@
   function isMedia(m) { return m === 'video' || m === 'music'; }
 
   async function doEncrypt() {
-    if (!canUse()) { showPaywall(); return; }
+    if (!isActivated()) { showModal(); return; }
     const text = $input.value;
     if (!text) { flash('⚠️ 请先输入要加密的文字', true); showText(); return; }
     const m = currentMethod();
@@ -662,15 +729,26 @@
         showMedia(`<audio src="${url}" controls></audio>`, url, 'cipher.wav',
           `音乐加密完成（${(blob.size / 1024).toFixed(1)} KB），解密时选择此文件`);
       }
-      bumpUse(); refreshCounter();
-      if (!canUse()) setTimeout(showPaywall, 300);
     } catch (e) {
       flash('❌ 加密失败：' + e.message, true); showText();
     }
   }
 
+  async function handleFileDecrypt(file) {
+    const m = currentMethod();
+    try {
+      showText();
+      flash('⏳ 正在解密' + (m === 'video' ? '视频' : '音乐') + '...');
+      const result = m === 'video' ? await decryptVideo(file) : await decryptMusic(file);
+      $output.textContent = '✅ 解密结果：\n' + result;
+      $output.style.color = '#e8d9f0';
+    } catch (e) {
+      flash('❌ 解密失败：' + e.message, true);
+    }
+  }
+
   async function doDecrypt() {
-    if (!canUse()) { showPaywall(); return; }
+    if (!isActivated()) { showModal(); return; }
     const m = currentMethod();
     try {
       if (TEXT_METHODS.includes(m)) {
@@ -683,10 +761,8 @@
         $fileInput.value = '';
         $fileInput.accept = m === 'video' ? 'video/*' : 'audio/*';
         $fileInput.click();
-        return; // 等文件选择回调
+        return;
       }
-      bumpUse(); refreshCounter();
-      if (!canUse()) setTimeout(showPaywall, 300);
     } catch (e) {
       flash('❌ 解密失败：' + e.message, true); showText();
     }
@@ -695,17 +771,28 @@
   $fileInput.addEventListener('change', async () => {
     const file = $fileInput.files[0];
     if (!file) return;
+    handleFileDecrypt(file);
+  });
+
+  // ===== 拖放处理 =====
+  function preventDefault(e) { e.preventDefault(); e.stopPropagation(); }
+  $dropZone.addEventListener('dragenter', e => { preventDefault(e); $dropZone.classList.add('dragover'); });
+  $dropZone.addEventListener('dragover', e => { preventDefault(e); });
+  $dropZone.addEventListener('dragleave', e => { preventDefault(e); $dropZone.classList.remove('dragover'); });
+  $dropZone.addEventListener('drop', e => {
+    preventDefault(e);
+    $dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!isActivated()) { showModal(); return; }
     const m = currentMethod();
-    try {
-      showText();
-      flash('⏳ 正在解密' + (m === 'video' ? '视频' : '音乐') + '...');
-      const result = m === 'video' ? await decryptVideo(file) : await decryptMusic(file);
-      $output.textContent = '✅ 解密结果：\n' + result;
-      $output.style.color = '#e8d9f0';
-      bumpUse(); refreshCounter();
-      if (!canUse()) setTimeout(showPaywall, 300);
-    } catch (e) {
-      flash('❌ 解密失败：' + e.message, true);
+    if (isMedia(m)) {
+      handleFileDecrypt(file);
+    } else {
+      // 文字方式：读取文件内容填入文本框
+      const reader = new FileReader();
+      reader.onload = () => { $input.value = reader.result; };
+      reader.readAsText(file);
     }
   });
 
@@ -731,14 +818,31 @@
   document.getElementById('btnDec').addEventListener('click', doDecrypt);
   document.getElementById('btnClr').addEventListener('click', doClear);
   document.getElementById('btnCopy').addEventListener('click', doCopy);
-  document.getElementById('btnClose').addEventListener('click', hidePaywall);
-  document.getElementById('resetLink').addEventListener('click', () => {
-    if (confirm('确认重置使用次数为 0？')) {
-      setUses(0); localStorage.removeItem(KEY_PAID); refreshCounter(); alert('已重置');
+
+  // ===== 激活码 =====
+  document.getElementById('btnAct').addEventListener('click', () => {
+    const code = document.getElementById('actCode').value;
+    const err = document.getElementById('actError');
+    if (verifyCode(code)) {
+      setActivated();
+      refreshStatus();
+      hideModal();
+      err.textContent = '';
+    } else {
+      err.textContent = '❌ 激活码无效，请检查后重试';
     }
   });
+  document.getElementById('actCode').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btnAct').click();
+  });
+  document.getElementById('resetLink').addEventListener('click', () => {
+    localStorage.removeItem(KEY_ACT);
+    refreshStatus();
+    showModal();
+  });
 
-  refreshCounter();
+  refreshStatus();
+  if (!isActivated()) showModal();
 </script>
 </body>
 </html>
