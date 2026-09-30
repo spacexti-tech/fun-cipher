@@ -205,16 +205,101 @@
     padding: 12px;
     box-shadow: 0 6px 16px rgba(120,115,245,0.35);
   }
+
+  /* ===== 新增：加密方式选择器 ===== */
+  .method-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .method-select label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #5a4768;
+  }
+  .method-select select {
+    flex: 1;
+    min-width: 140px;
+    padding: 8px 10px;
+    border: 2px solid #c4b5fd;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    background: #fff;
+    color: #4c1d95;
+    cursor: pointer;
+    font-family: inherit;
+    outline: none;
+  }
+  .method-select select:focus { border-color: #8b5cf6; }
+
+  /* ===== 媒体输出区 ===== */
+  .media-output {
+    margin-top: 10px;
+    padding: 12px;
+    background: #1f1b2e;
+    border-radius: 14px;
+    text-align: center;
+  }
+  .media-output video, .media-output audio {
+    width: 100%;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .media-output .dl-link {
+    display: inline-block;
+    padding: 8px 18px;
+    background: linear-gradient(135deg, #4ade80, #06b6d4);
+    color: #fff;
+    text-decoration: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(6,182,212,0.3);
+  }
+  .media-output .hint {
+    font-size: 12px;
+    color: #a89bb8;
+    margin-top: 6px;
+  }
+  .media-output.hidden, .text-output.hidden { display: none; }
+
+  .upload-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: #fff;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+  }
 </style>
 </head>
 <body>
   <div class="card">
     <h1>🔐 趣味字符加密器</h1>
-    <p class="subtitle">把文字变成日语 + 意大利语 + 甲骨文的混合密文，还能还原 ✨</p>
+    <p class="subtitle">多种加密方式自由选择：Emoji · 甲骨文 · 法语 · 日语 · 视频 · 音乐 ✨</p>
 
     <div class="counter">
       <span>免费使用：<strong id="used">0</strong> / 520 次</span>
       <div class="progress"><div id="bar"></div></div>
+    </div>
+
+    <div class="method-select">
+      <label>🎛 加密方式：</label>
+      <select id="method">
+        <option value="emoji">😀 Emoji 表情</option>
+        <option value="oracle">🏺 甲骨文</option>
+        <option value="french">🇫🇷 法语</option>
+        <option value="japanese">🈶 日语</option>
+        <option value="video">🎬 视频</option>
+        <option value="music">🎵 音乐</option>
+      </select>
     </div>
 
     <textarea id="input" placeholder="在这里输入文字... 例如：你好世界 Hello 123"></textarea>
@@ -225,13 +310,23 @@
       <button class="btn-clr" id="btnClr">🗑 清空</button>
     </div>
 
-    <div class="output-area">
-      <label>
-        <span>结果</span>
-        <button class="copy-btn" id="btnCopy">📋 复制</button>
-      </label>
-      <div class="output" id="output"></div>
+    <div class="text-output" id="textOutput">
+      <div class="output-area">
+        <label>
+          <span>结果</span>
+          <button class="copy-btn" id="btnCopy">📋 复制</button>
+        </label>
+        <div class="output" id="output"></div>
+      </div>
     </div>
+
+    <div class="media-output hidden" id="mediaOutput">
+      <div id="mediaPlayer"></div>
+      <a class="dl-link" id="dlLink" href="#" download>⬇ 下载文件</a>
+      <div class="hint" id="mediaHint"></div>
+    </div>
+
+    <input type="file" id="fileInput" style="display:none" accept="video/*,audio/*">
 
     <div class="footer">
       <span>本地加密 · 无需联网 · 💛</span>
@@ -250,104 +345,376 @@
   </div>
 
 <script>
-  // ============ 字符池：日语(平假名+片假名) + 意大利语(拉丁字母及重音) + 甲骨文风古汉字 ============
-  const POOL = Array.from(
-    "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン" +
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÄÇÈÉÊËÌÍÎÏÑàáâãäçèéêëìíîïñ" +
-    "人天夫夨夭央女母好姐妹妻妾子孙孝孚宀宅宇守安宋宏宗官宙定宛宜宝实宠审宪宫宰害宴宵家宸容宽寮宁寨寻专射将尔尹尺尼尾居屋屈展屠履山岔岛岳岸岩峰峻岭峪峡峨峭崎崖崛嵘嵯巅巛"
-  );
-  const INDEX = new Map(POOL.map((c, i) => [c, i]));
-  const KEY = 0x5A; // XOR key — 让"加密"更名副其实
+  const KEY = 0x5A; // XOR key
 
-  function encrypt(text) {
-    const bytes = new TextEncoder().encode(text);
-    return Array.from(bytes).map(b => POOL[b ^ KEY]).join('');
+  // ===== 四种文字字符池（各 256 个唯一字符）=====
+  function buildPool(ranges) {
+    const pool = [];
+    const cursors = ranges.map(([s]) => s);
+    while (pool.length < 256) {
+      let advanced = false;
+      for (let i = 0; i < ranges.length; i++) {
+        const [s, e] = ranges[i];
+        if (cursors[i] <= e) {
+          pool.push(String.fromCodePoint(cursors[i]++));
+          advanced = true;
+          if (pool.length >= 256) break;
+        }
+      }
+      if (!advanced) break;
+    }
+    return pool;
   }
 
-  function decrypt(text) {
+  const POOLS = {
+    emoji: buildPool([
+      [0x1F600, 0x1F64F], [0x1F300, 0x1F5FF], [0x1F900, 0x1F9FF],
+      [0x1FA70, 0x1FAFF], [0x2600, 0x26FF], [0x2700, 0x27BF],
+    ]),
+    oracle: Array.from({ length: 256 }, (_, i) => String.fromCodePoint(0x4E00 + i)),
+    french: Array.from({ length: 256 }, (_, i) => String.fromCharCode(0x00C0 + i)),
+    japanese: buildPool([
+      [0x3041, 0x3096], [0x30A1, 0x30FA], [0xFF61, 0xFF9F], [0x3001, 0x303F],
+    ]),
+  };
+  const TEXT_METHODS = ['emoji', 'oracle', 'french', 'japanese'];
+
+  function encryptText(text, method) {
+    const pool = POOLS[method];
+    const bytes = new TextEncoder().encode(text);
+    return Array.from(bytes).map(b => pool[b ^ KEY]).join('');
+  }
+  function decryptText(text, method) {
+    const pool = POOLS[method];
+    const index = new Map(pool.map((c, i) => [c, i]));
     const chars = Array.from(text).filter(c => /\S/.test(c));
     if (chars.length === 0) throw new Error('空文本');
     const bytes = [];
     for (const c of chars) {
-      if (!INDEX.has(c)) throw new Error('文本包含非加密字符："' + c + '"');
-      bytes.push(INDEX.get(c) ^ KEY);
+      if (!index.has(c)) throw new Error('含非加密字符：' + c);
+      bytes.push(index.get(c) ^ KEY);
     }
     return new TextDecoder().decode(new Uint8Array(bytes));
   }
 
-  // ============ 使用次数管理（localStorage 软限制） ============
+  // ===== 视频加密：字节 → 调色板颜色 → 网格帧 → webm =====
+  const V = { W: 320, H: 320, CELL: 20, COLS: 16, ROWS: 16 };
+  function byteToRGB(b) {
+    return [(b & 7) * 32, ((b >> 3) & 7) * 32, ((b >> 6) & 3) * 64];
+  }
+  function rgbToByte(r, g, b) {
+    const rb = Math.round(r / 32) * 32;
+    const gb = Math.round(g / 32) * 32;
+    const bb = Math.round(b / 64) * 64;
+    return (rb / 32) | ((gb / 32) << 3) | ((bb / 64) << 6);
+  }
+
+  async function encryptVideo(text) {
+    const bytes = new TextEncoder().encode(text);
+    const total = bytes.length;
+    const canvas = document.createElement('canvas');
+    canvas.width = V.W; canvas.height = V.H;
+    const ctx = canvas.getContext('2d');
+    const PER_FRAME = V.COLS * V.ROWS - 3;
+    const frames = Math.max(1, Math.ceil(total / PER_FRAME));
+    const stream = canvas.captureStream(10);
+    const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const chunks = [];
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.start();
+
+    let pos = 0;
+    for (let f = 0; f < frames; f++) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, V.W, V.H);
+      // header: sync=0, total high, total low
+      drawCell(ctx, 0, 0, 0);
+      drawCell(ctx, 1, 0, (total >> 8) & 0xFF);
+      drawCell(ctx, 2, 0, total & 0xFF);
+      let idx = 3;
+      while (idx < V.COLS * V.ROWS) {
+        const c = idx % V.COLS, r = Math.floor(idx / V.COLS);
+        drawCell(ctx, c, r, pos < total ? bytes[pos++] : 0);
+        idx++;
+      }
+      await new Promise(r => setTimeout(r, 110));
+    }
+    rec.stop();
+    await new Promise(res => rec.onstop = res);
+    return new Blob(chunks, { type: 'video/webm' });
+  }
+  function drawCell(ctx, col, row, byte) {
+    const [r, g, b] = byteToRGB(byte);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(col * V.CELL, row * V.CELL, V.CELL, V.CELL);
+  }
+
+  async function decryptVideo(file) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    await new Promise((res, rej) => { video.onloadeddata = res; video.onerror = rej; });
+    const canvas = document.createElement('canvas');
+    canvas.width = V.W; canvas.height = V.H;
+    const ctx = canvas.getContext('2d');
+    const allBytes = [];
+    let total = -1;
+
+    await new Promise(resolve => {
+      const step = () => {
+        ctx.drawImage(video, 0, 0, V.W, V.H);
+        const d = ctx.getImageData(0, 0, V.W, V.H).data;
+        const gb = (c, r) => {
+          const x = c * V.CELL + (V.CELL >> 1), y = r * V.CELL + (V.CELL >> 1);
+          const p = (y * V.W + x) * 4;
+          return rgbToByte(d[p], d[p + 1], d[p + 2]);
+        };
+        if (gb(0, 0) === 0) {
+          const t = (gb(1, 0) << 8) | gb(2, 0);
+          if (total === -1) total = t;
+          for (let i = 3; i < V.COLS * V.ROWS && allBytes.length < total; i++) {
+            allBytes.push(gb(i % V.COLS, Math.floor(i / V.COLS)));
+          }
+        }
+        if (allBytes.length >= total || video.ended) { resolve(); return; }
+        video.currentTime = Math.min(video.duration, video.currentTime + 0.1);
+        video.onseeked = step;
+      };
+      video.currentTime = 0;
+      video.onseeked = step;
+    });
+    URL.revokeObjectURL(url);
+    return new TextDecoder().decode(new Uint8Array(allBytes.slice(0, total > 0 ? total : 0)));
+  }
+
+  // ===== 音乐加密：字节 → 两个半音音符 → webm 音频 =====
+  const NOTES = [261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00,
+    415.30, 440.00, 466.16, 493.88, 523.25, 554.37, 587.33, 622.25];
+  const TONE = 0.12, GAP = 0.08, STEP = TONE + GAP;
+  const WIN_MS = 0.06; // 分析窗口（小于音符时长，居中采样）
+
+  async function encryptMusic(text) {
+    const bytes = new TextEncoder().encode(text);
+    const sr = 44100;
+    const toneSamples = Math.floor(sr * TONE);
+    const stepSamples = Math.floor(sr * STEP);
+    const leadIn = Math.floor(sr * 0.25);
+    const totalSamples = leadIn + bytes.length * 2 * stepSamples + Math.floor(sr * 0.2);
+    const samples = new Float32Array(totalSamples);
+    const atk = Math.floor(sr * 0.012);
+    let pos = leadIn;
+    for (const b of bytes) {
+      for (const nib of [b >> 4, b & 15]) {
+        const freq = NOTES[nib];
+        for (let i = 0; i < toneSamples; i++) {
+          let env = 1;
+          if (i < atk) env = i / atk;
+          else if (i > toneSamples - atk) env = (toneSamples - i) / atk;
+          samples[pos + i] = 0.35 * env * Math.sin(2 * Math.PI * freq * i / sr);
+        }
+        pos += stepSamples;
+      }
+    }
+    return encodeWAV(samples, sr);
+  }
+
+  function encodeWAV(samples, sr) {
+    const n = samples.length;
+    const buf = new ArrayBuffer(44 + n * 2);
+    const v = new DataView(buf);
+    const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE');
+    ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    ws(36, 'data'); v.setUint32(40, n * 2, true);
+    let off = 44;
+    for (let i = 0; i < n; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+    return new Blob([v], { type: 'audio/wav' });
+  }
+
+  function goertzel(samples, freq, sr) {
+    const k = Math.round(freq * samples.length / sr);
+    const w = 2 * Math.PI * k / samples.length;
+    const coeff = 2 * Math.cos(w);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const s0 = coeff * s1 - s2 + samples[i];
+      s2 = s1; s1 = s0;
+    }
+    return s1 * s1 + s2 * s2 - coeff * s1 * s2;
+  }
+
+  async function decryptMusic(file) {
+    const buf = await file.arrayBuffer();
+    const ctx = new AudioContext();
+    const audio = await ctx.decodeAudioData(buf.slice(0));
+    const sr = audio.sampleRate;
+    const data = audio.getChannelData(0);
+    const WIN = Math.floor(sr * WIN_MS);
+    const STEP_S = Math.floor(sr * STEP);
+    const HALF = Math.floor(sr * (TONE - WIN_MS) / 2); // 使分析窗口居中于音符
+
+    // 找到第一个有信号的采样点
+    let start = 0;
+    const probe = Math.floor(sr * 0.005);
+    for (let i = 0; i + WIN < data.length; i += probe) {
+      let e = 0;
+      for (let j = 0; j < WIN; j++) e += data[i + j] * data[i + j];
+      if (e > WIN * 0.001) { start = i; break; }
+    }
+
+    const nibbles = [];
+    let pos = start;
+    while (pos + WIN < data.length) {
+      const mid = pos + HALF;
+      const slice = data.slice(mid, mid + WIN);
+      let best = 0, bestMag = -1;
+      for (let n = 0; n < 16; n++) {
+        const m = goertzel(slice, NOTES[n], sr);
+        if (m > bestMag) { bestMag = m; best = n; }
+      }
+      if (bestMag > 0.005) nibbles.push(best);
+      pos += STEP_S;
+    }
+
+    const bytes = [];
+    for (let i = 0; i + 1 < nibbles.length; i += 2) {
+      bytes.push((nibbles[i] << 4) | nibbles[i + 1]);
+    }
+    ctx.close();
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  }
+
+  // ===== 使用次数管理 =====
   const LIMIT = 520;
   const KEY_USE = 'funCipher.uses';
   const KEY_PAID = 'funCipher.paid';
-
-  function getUses() { return parseInt(localStorage.getItem(KEY_USE) || '0', 10); }
-  function setUses(n) { localStorage.setItem(KEY_USE, String(n)); }
-  function isPaid() { return localStorage.getItem(KEY_PAID) === '1'; }
-  function bumpUse() { const n = getUses() + 1; setUses(n); return n; }
+  const getUses = () => parseInt(localStorage.getItem(KEY_USE) || '0', 10);
+  const setUses = n => localStorage.setItem(KEY_USE, String(n));
+  const isPaid = () => localStorage.getItem(KEY_PAID) === '1';
+  const bumpUse = () => { const n = getUses() + 1; setUses(n); return n; };
+  const canUse = () => isPaid() || getUses() < LIMIT;
 
   function refreshCounter() {
     const used = getUses();
     document.getElementById('used').textContent = used;
-    const pct = Math.min(100, (used / LIMIT) * 100);
-    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('bar').style.width = Math.min(100, used / LIMIT * 100) + '%';
   }
+  function showPaywall() { document.getElementById('modal').classList.remove('hidden'); }
+  function hidePaywall() { document.getElementById('modal').classList.add('hidden'); }
 
-  function canUse() { return isPaid() || getUses() < LIMIT; }
-
-  function showPaywall() {
-    document.getElementById('modal').classList.remove('hidden');
-  }
-  function hidePaywall() {
-    document.getElementById('modal').classList.add('hidden');
-  }
-
-  // ============ UI 交互 ============
+  // ===== UI =====
   const $input = document.getElementById('input');
   const $output = document.getElementById('output');
+  const $method = document.getElementById('method');
+  const $textOut = document.getElementById('textOutput');
+  const $mediaOut = document.getElementById('mediaOutput');
+  const $mediaPlayer = document.getElementById('mediaPlayer');
+  const $dlLink = document.getElementById('dlLink');
+  const $mediaHint = document.getElementById('mediaHint');
+  const $fileInput = document.getElementById('fileInput');
 
   function flash(msg, isError = false) {
     $output.textContent = msg;
     $output.style.color = isError ? '#ff6b6b' : '#e8d9f0';
   }
+  function showText() { $textOut.classList.remove('hidden'); $mediaOut.classList.add('hidden'); }
+  function showMedia(html, url, name, hint) {
+    $textOut.classList.add('hidden');
+    $mediaOut.classList.remove('hidden');
+    $mediaPlayer.innerHTML = html;
+    $dlLink.href = url;
+    $dlLink.download = name;
+    $mediaHint.textContent = hint;
+  }
 
-  function doEncrypt() {
+  function currentMethod() { return $method.value; }
+  function isMedia(m) { return m === 'video' || m === 'music'; }
+
+  async function doEncrypt() {
     if (!canUse()) { showPaywall(); return; }
     const text = $input.value;
-    if (!text) { flash('⚠️ 请先输入要加密的文字', true); return; }
+    if (!text) { flash('⚠️ 请先输入要加密的文字', true); showText(); return; }
+    const m = currentMethod();
     try {
-      const result = encrypt(text);
-      $output.textContent = result;
-      $output.style.color = '#e8d9f0';
-      bumpUse();
-      refreshCounter();
+      if (TEXT_METHODS.includes(m)) {
+        showText();
+        $output.textContent = encryptText(text, m);
+        $output.style.color = '#e8d9f0';
+      } else if (m === 'video') {
+        flash('🎬 正在生成视频...');
+        showText();
+        const blob = await encryptVideo(text);
+        const url = URL.createObjectURL(blob);
+        showMedia(`<video src="${url}" controls></video>`, url, 'cipher.webm',
+          `视频加密完成（${(blob.size / 1024).toFixed(1)} KB），解密时选择此文件`);
+      } else if (m === 'music') {
+        flash('🎵 正在生成音乐...');
+        showText();
+        const blob = await encryptMusic(text);
+        const url = URL.createObjectURL(blob);
+        showMedia(`<audio src="${url}" controls></audio>`, url, 'cipher.wav',
+          `音乐加密完成（${(blob.size / 1024).toFixed(1)} KB），解密时选择此文件`);
+      }
+      bumpUse(); refreshCounter();
       if (!canUse()) setTimeout(showPaywall, 300);
     } catch (e) {
-      flash('❌ 加密失败：' + e.message, true);
+      flash('❌ 加密失败：' + e.message, true); showText();
     }
   }
 
-  function doDecrypt() {
+  async function doDecrypt() {
     if (!canUse()) { showPaywall(); return; }
-    const text = $input.value;
-    if (!text) { flash('⚠️ 请先输入要解密的字符', true); return; }
+    const m = currentMethod();
     try {
-      const result = decrypt(text);
-      $output.textContent = result;
+      if (TEXT_METHODS.includes(m)) {
+        const text = $input.value;
+        if (!text) { flash('⚠️ 请先输入要解密的字符', true); showText(); return; }
+        showText();
+        $output.textContent = decryptText(text, m);
+        $output.style.color = '#e8d9f0';
+      } else {
+        $fileInput.value = '';
+        $fileInput.accept = m === 'video' ? 'video/*' : 'audio/*';
+        $fileInput.click();
+        return; // 等文件选择回调
+      }
+      bumpUse(); refreshCounter();
+      if (!canUse()) setTimeout(showPaywall, 300);
+    } catch (e) {
+      flash('❌ 解密失败：' + e.message, true); showText();
+    }
+  }
+
+  $fileInput.addEventListener('change', async () => {
+    const file = $fileInput.files[0];
+    if (!file) return;
+    const m = currentMethod();
+    try {
+      showText();
+      flash('⏳ 正在解密' + (m === 'video' ? '视频' : '音乐') + '...');
+      const result = m === 'video' ? await decryptVideo(file) : await decryptMusic(file);
+      $output.textContent = '✅ 解密结果：\n' + result;
       $output.style.color = '#e8d9f0';
-      bumpUse();
-      refreshCounter();
+      bumpUse(); refreshCounter();
       if (!canUse()) setTimeout(showPaywall, 300);
     } catch (e) {
       flash('❌ 解密失败：' + e.message, true);
     }
-  }
+  });
 
   function doClear() {
     $input.value = '';
     $output.textContent = '';
     $output.style.color = '#e8d9f0';
+    showText();
   }
-
   function doCopy() {
     const text = $output.textContent;
     if (!text) return;
@@ -359,18 +726,15 @@
     }).catch(() => flash('❌ 复制失败，请手动选择', true));
   }
 
+  $method.addEventListener('change', () => { doClear(); });
   document.getElementById('btnEnc').addEventListener('click', doEncrypt);
   document.getElementById('btnDec').addEventListener('click', doDecrypt);
   document.getElementById('btnClr').addEventListener('click', doClear);
   document.getElementById('btnCopy').addEventListener('click', doCopy);
   document.getElementById('btnClose').addEventListener('click', hidePaywall);
-
   document.getElementById('resetLink').addEventListener('click', () => {
-    if (confirm('【开发者演示】确认重置使用次数为 0？')) {
-      setUses(0);
-      localStorage.removeItem(KEY_PAID);
-      refreshCounter();
-      alert('已重置');
+    if (confirm('确认重置使用次数为 0？')) {
+      setUses(0); localStorage.removeItem(KEY_PAID); refreshCounter(); alert('已重置');
     }
   });
 
