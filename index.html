@@ -638,7 +638,7 @@
   // ===== 激活码管理 =====
   const KEY_ACT = 'funCipher.activated';
   // 有效激活码（简单异或混淆存储）
-  const VALID_CODES = ['FUN-2024-OPEN', 'CIPHER-X-2024', 'DJX-520-LOVE']
+  const VALID_CODES = ['spacex666']
     .map(s => [...s].map(c => c.charCodeAt(0) ^ 0x5A).join(','));
   const isActivated = () => localStorage.getItem(KEY_ACT) === '1';
   function setActivated() { localStorage.setItem(KEY_ACT, '1'); }
